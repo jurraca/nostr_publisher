@@ -150,7 +150,7 @@ defmodule NostrPublisher.Fetcher do
 
   defp process_event(%{kind: 30023, tags: tags, created_at: created_at} = event, output_dir) do
     d_tag = get_d_tag(tags)
-    ts = Integer.to_string(created_at)
+    ts = DateTime.to_unix(created_at) |> Integer.to_string()
     
     if d_tag do
       filename = sanitize_filename(d_tag) <> "_" <> ts <> ".json"
