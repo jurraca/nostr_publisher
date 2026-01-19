@@ -1,6 +1,15 @@
 # NostrPublisher
 
-**TODO: Add description**
+A [NimblePublisher](https://hexdocs.pm/nimble_publisher/NimblePublisher.html) plugin for Nostr long-form events.
+
+NimblePublisher is "minimal filesystem-based publishing engine with Markdown support and code highlighting".
+
+Nostr has an event kind for blog posts or "long-form" text, which is kind `30023`, defined by NIP [23](https://github.com/nostr-protocol/nips/blob/master/23.md).
+
+This plugin takes configuration in the form of Nostr filters (which authors and event types to fetch, and where to find them),
+and saves the events to the local filesystem. The `NostrPublisher.Parser` parses the event data and builds a post.
+
+Publish from anywhere, in markdown, and it will appear on your blog automagically.
 
 ## Installation
 
@@ -28,11 +37,9 @@ defmodule MyBlog.Blog do
   Example blog module using NimblePublisher with Nostr events.
   """
 
-  alias NostrPublisher.Post
-
   use NimblePublisher,
-    build: Post,
-    from: Application.app_dir(:nimble_publisher, "priv/posts/**/*.json"),
+    build: NostrPublisher.Post,
+    from: Application.app_dir(:myblog, "priv/posts/**/*.json"),
     as: :posts,
     parser: NostrPublisher.Parser,
     highlighters: []
@@ -66,13 +73,12 @@ end
 
 ## Configuration
 
+In your web application (here called `myblog`), configure `NostrPublisher`.
 You should set `relays` and `filters` to specify the author(s) to fetch and where to fetch them from.
-You should also set a `frequency` to run the check schedule on.
 
 ```
 # config/config.exs
-config :nimble_publisher, NimblePublisher.NostrScheduler,
-  frequency: :timer.hours(8),
+config :myblog, NostrPublisher,
   relays: ["wss://relay.damus.io", "wss://nos.lol"],
   filters: [authors: ["pubkey"], kinds: [30023]],
   output_dir: "priv/posts",
