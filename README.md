@@ -31,7 +31,7 @@ In our own blog application, we want to pass `NostrPublisher` modules into `Nimb
 
 Example of a module in your `MyBlog` application: 
 
-```
+```elixir
 defmodule MyBlog.Blog do
   @moduledoc """
   Example blog module using NimblePublisher with Nostr events.
@@ -76,7 +76,7 @@ end
 In your web application (here called `myblog`), configure `NostrPublisher`.
 You should set `relays` and `filters` to specify the author(s) to fetch and where to fetch them from.
 
-```
+```elixir
 # config/config.exs
 config :myblog, NostrPublisher,
   relays: ["wss://relay.damus.io", "wss://nos.lol"],
