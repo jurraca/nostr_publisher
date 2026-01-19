@@ -81,15 +81,6 @@ defmodule NostrPublisher.Parser do
   defp parse_tag(%Tag{type: type, data: data, info: []}), do: {type, data}
   defp parse_tag(%Tag{type: type, data: data, info: info}), do: {type, {data, info}}
 
-  defp get_all_tag_values(tags, tag_name) do
-    tags
-    |> Enum.filter(fn tag -> Map.get(tag, :type) == tag_name end)
-    |> Enum.map(fn
-      %Tag{data: data} -> data
-      _ -> nil
-    end)
-  end
-
   defp parse_date(tags) do
     case get_tag_value(tags, "published_at") do
       nil ->

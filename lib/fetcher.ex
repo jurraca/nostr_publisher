@@ -41,7 +41,7 @@ defmodule NostrPublisher.Fetcher do
       output_dir: output_dir,
       schedule_minutes: schedule_minutes,
       reload_module: reload_module,
-      events: %{},
+      events: [],
       sub_id: nil
     }
 
@@ -58,42 +58,41 @@ defmodule NostrPublisher.Fetcher do
 
   @impl true
   def handle_info(:connect_and_subscribe, state) do
-    Logger.info("Connecting to Nostr relays: #{inspect(state.relays)}")
-    Enum.each(state.relays, fn relay_url -> NostrEx.connect(relay_url) end)
-
     connected_relays = NostrEx.list_relays()
 
     if connected_relays == [] do
-      Logger.error("Failed to connect to any relays")
-      {:stop, :normal, state}
-    else
-      sub = state.subscription
-      NostrEx.listen(sub.id)
+      Enum.each(state.relays, fn relay_url -> NostrEx.connect(relay_url) end)
+    end
 
-      case NostrEx.send_sub(sub, send_via: connected_relays) do
-        {:ok, sub_id} ->
-          Logger.info("Subscribed with ID: #{sub_id}")
-          {:noreply, %{state | sub_id: sub_id}}
+    sub = state.subscription
+    NostrEx.listen(sub.id)
 
-        {:error, reason} ->
-          Logger.error("Failed to subscribe: #{inspect(reason)}")
-          cleanup_relays()
-          {:noreply, state}
-      end
+    case NostrEx.send_sub(sub, send_via: connected_relays) do
+      {:ok, sub_id} ->
+        Logger.info("Subscribed with ID: #{sub_id}")
+        {:noreply, %{state | sub_id: sub_id}}
+
+      {:error, _reason} ->
+        cleanup_relays()
+        {:noreply, state}
     end
   end
 
   @impl true
   def handle_info({:event, _sub_id, event}, state) do
-    case process_event(event, state.output_dir) do
-      :ok ->
-        d_tag = get_d_tag(event)
-        new_state = %{state | events: Map.put(state.events, d_tag, event)}
-        {:noreply, new_state}
-
-      {:error, reason} ->
-        Logger.warning("Failed to process event: #{inspect(reason)}")
-        {:noreply, state}
+    d_tag = get_d_tag(event)
+    if d_tag in state.events do
+      {:noreply, state}
+    else
+      case process_event(event, state.output_dir) do
+        :ok ->
+          new_state = %{state | events: [d_tag | state.events]}
+          {:noreply, new_state}
+  
+        {:error, reason} ->
+          Logger.warning("Failed to process event: #{inspect(reason)}")
+          {:noreply, state}
+      end
     end
   end
 
@@ -103,7 +102,7 @@ defmodule NostrPublisher.Fetcher do
     NostrEx.disconnect(relay_host)
 
     # Hot-reload blog module if configured and we received events
-    if Map.get(state, :reload_module) && map_size(state.events) > 0 do
+    if Map.get(state, :reload_module) do
       reload_module(state.reload_module)
     end
 
@@ -118,7 +117,6 @@ defmodule NostrPublisher.Fetcher do
 
   @impl true
   def handle_info(:stop, state) do
-    Logger.info("Fetching complete. Received #{map_size(state.events)} events.")
     cleanup_relays()
     {:stop, :normal, state}
   end
@@ -135,8 +133,6 @@ defmodule NostrPublisher.Fetcher do
   end
 
   defp reload_module(module_path) do
-    Logger.info("Reloading module: #{module_path}")
-
     try do
       Code.compile_file(module_path)
       Logger.info("Module reloaded successfully")
