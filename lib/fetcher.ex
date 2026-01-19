@@ -31,7 +31,7 @@ defmodule NostrPublisher.Fetcher do
     relays = Keyword.fetch!(opts, :relays)
     filters = Keyword.fetch!(opts, :filters)
     output_dir = Keyword.fetch!(opts, :output_dir)
-    schedule_minutes = Keyword.get(opts, :schedule_minutes, 8 * 60)
+    schedule_minutes = Keyword.get(opts, :schedule_minutes, 60)
     reload_module = Keyword.get(opts, :reload_module)
 
     File.mkdir_p!(output_dir)
@@ -110,7 +110,7 @@ defmodule NostrPublisher.Fetcher do
     # If no more connected relays,
     # schedule another fetch according to schedule
     if NostrEx.list_relays() == [] do
-      Process.send_after(self(), :connect_and_subscribe, state.schedule_minutes * 60)
+      Process.send_after(self(), :connect_and_subscribe, state.schedule_minutes * 3600)
     end
 
     {:noreply, state}
