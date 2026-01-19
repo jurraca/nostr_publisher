@@ -33,40 +33,48 @@ defmodule NostrPublisher.Fetcher do
     output_dir = Keyword.fetch!(opts, :output_dir)
     schedule_minutes = Keyword.get(opts, :schedule_minutes, 8 * 60)
     reload_module = Keyword.get(opts, :reload_module)
-    
+
     File.mkdir_p!(output_dir)
-    
+
     state = %{
       relays: relays,
-      filters: filters,
       output_dir: output_dir,
       schedule_minutes: schedule_minutes,
       reload_module: reload_module,
       events: %{},
       sub_id: nil
     }
-    
-    send(self(), :connect_and_subscribe)
-    
-    {:ok, state}
+
+    case NostrEx.create_sub(filters) do
+      {:ok, sub} ->
+        state = Map.put(state, :subscription, sub)
+        send(self(), :connect_and_subscribe)
+        {:ok, state}
+
+      {:error, reason} ->
+        {:stop, reason}
+    end
   end
 
   @impl true
   def handle_info(:connect_and_subscribe, state) do
     Logger.info("Connecting to Nostr relays: #{inspect(state.relays)}")
-    Enum.each(state.relays, fn relay_url -> NostrEx.connect_relay(relay_url) end)
+    Enum.each(state.relays, fn relay_url -> NostrEx.connect(relay_url) end)
 
-    connected_relays = NostrEx.list_connected_relays()
+    connected_relays = NostrEx.list_relays()
+
     if connected_relays == [] do
       Logger.error("Failed to connect to any relays")
       {:stop, :normal, state}
     else
-      case NostrEx.send_subscription(state.filters, send_via: connected_relays) do
+      sub = state.subscription
+      NostrEx.listen(sub.id)
+
+      case NostrEx.send_sub(sub, send_via: connected_relays) do
         {:ok, sub_id} ->
-          NostrEx.listen_for_subscription(sub_id)
           Logger.info("Subscribed with ID: #{sub_id}")
           {:noreply, %{state | sub_id: sub_id}}
-        
+
         {:error, reason} ->
           Logger.error("Failed to subscribe: #{inspect(reason)}")
           cleanup_relays()
@@ -92,16 +100,16 @@ defmodule NostrPublisher.Fetcher do
   @impl true
   def handle_info({:eose, _sub_id, relay_host}, state) do
     Logger.debug("EOSE received from #{relay_host}")
-    NostrEx.disconnect_relay(relay_host)
+    NostrEx.disconnect(relay_host)
 
     # Hot-reload blog module if configured and we received events
-    if state.reload_module && map_size(state.events) > 0 do
+    if Map.get(state, :reload_module) && map_size(state.events) > 0 do
       reload_module(state.reload_module)
     end
 
     # If no more connected relays,
     # schedule another fetch according to schedule
-    if NostrEx.list_connected_relays() == [] do
+    if NostrEx.list_relays() == [] do
       Process.send_after(self(), :connect_and_subscribe, state.schedule_minutes * 60)
     end
 
@@ -138,10 +146,12 @@ defmodule NostrPublisher.Fetcher do
   end
 
   defp cleanup_relays() do
-    NostrEx.list_connected_relays()
+    NostrEx.list_relays()
     |> Enum.each(fn relay_name ->
-      case NostrEx.disconnect_relay(relay_name) do
-        :ok -> :ok
+      case NostrEx.disconnect(relay_name) do
+        :ok ->
+          :ok
+
         {:error, reason} ->
           Logger.debug("Error disconnecting from #{relay_name}: #{inspect(reason)}")
       end
