@@ -2,20 +2,20 @@ defmodule NostrPublisher.Fetcher do
   @moduledoc """
   Fetches Nostr long-form content events (kind 30023) from relays and saves them
   as JSON files on disk.
-  
+
   This module handles subscribing to Nostr relays, receiving events, and writing
   them to the filesystem. Events are saved using their `d` tag as the filename,
   so updates to the same article (same `d` tag) will replace the previous version.
   """
-  
+
   use GenServer
   require Logger
 
   @doc """
   Starts the fetcher process.
-  
+
   ## Options
-  
+
     - `:relays` - List of relay URLs to connect to
     - `:filters` - Map of filter criteria (authors, kinds, since, etc.)
     - `:output_dir` - Directory where JSON files will be saved
@@ -90,7 +90,7 @@ defmodule NostrPublisher.Fetcher do
         d_tag = get_d_tag(event)
         new_state = %{state | events: Map.put(state.events, d_tag, event)}
         {:noreply, new_state}
-      
+
       {:error, reason} ->
         Logger.warning("Failed to process event: #{inspect(reason)}")
         {:noreply, state}
@@ -136,6 +136,7 @@ defmodule NostrPublisher.Fetcher do
 
   defp reload_module(module_path) do
     Logger.info("Reloading module: #{module_path}")
+
     try do
       Code.compile_file(module_path)
       Logger.info("Module reloaded successfully")
@@ -159,33 +160,39 @@ defmodule NostrPublisher.Fetcher do
   end
 
   defp process_event(%{kind: 30023, tags: tags, created_at: created_at} = event, output_dir) do
-    d_tag = get_d_tag(tags)
     ts = DateTime.to_unix(created_at) |> Integer.to_string()
-    
-    if d_tag do
-      filename = sanitize_filename(d_tag) <> "_" <> ts <> ".json"
-      filepath = Path.join(output_dir, filename)
-      
-      if not File.exists?(filepath) do
-        json = JSON.encode!(event)
-        File.write(filepath, json)
-        Logger.debug("Saved event to #{filepath}")
-        :ok
-      else
-        {:error, :already_written} 
+
+    filename =
+      case get_d_tag(tags) do
+        %{data: d_tag_data} ->
+          sanitize_filename(d_tag_data) <> "_" <> ts <> ".json"
+
+        _ ->
+          String.slice(event.id, 0..8) <> "_" <> ts <> ".json"
       end
+
+    filepath = Path.join(output_dir, filename)
+
+    if not File.exists?(filepath) do
+      json =
+        event
+        |> Map.from_struct()
+        |> Map.update!(:tags, fn tags ->
+          Enum.map(tags, &Map.from_struct/1)
+        end)
+        |> JSON.encode!()
+
+      File.write(filepath, json)
+      :ok
     else
-      {:error, :missing_d_tag}
+      {:error, :already_written}
     end
   end
 
   defp process_event(_event, _output_dir), do: {:error, :invalid_kind}
 
   defp get_d_tag(tags) when is_list(tags) do
-    Enum.find_value(tags, fn
-      [:d, value | _] -> value
-      _ -> nil
-    end)
+    Enum.find_value(tags, fn %{type: :d} = tag -> tag end)
   end
 
   defp get_d_tag(_event), do: nil
@@ -194,7 +201,7 @@ defmodule NostrPublisher.Fetcher do
     # Replace characters that might be problematic in filenames
     d_tag
     |> String.replace(~r/[^a-zA-Z0-9_-]/, "_")
-    |> String.slice(0, 50)  # Limit length
+    # Limit length
+    |> String.slice(0, 50)
   end
 end
-
