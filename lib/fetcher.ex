@@ -106,7 +106,7 @@ defmodule NostrPublisher.Fetcher do
       if Map.get(state, :reload_module) do
         reload_module(state.reload_module)
       end
-      Process.send_after(self(), :connect_and_subscribe, state.schedule_minutes * 3600)
+      Process.send_after(self(), :connect_and_subscribe, state.schedule_minutes * 60_000)
     end
 
     {:noreply, state}
