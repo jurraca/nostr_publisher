@@ -152,13 +152,17 @@ defmodule NostrPublisher.Fetcher do
     end)
   end
 
+  # Write the event to the local file system, if it does not exist yet.
+  # events are indexed by their d_tag.
+  # without d_tag, we use the first 8 chars of the event ID and its created_at timestamp
+  # and will get new events written for every revision of the Post
   defp process_event(%{kind: 30023, tags: tags, created_at: created_at} = event, output_dir) do
     ts = DateTime.to_unix(created_at) |> Integer.to_string()
 
     filename =
       case get_d_tag(tags) do
         %{data: d_tag_data} ->
-          sanitize_filename(d_tag_data) <> "_" <> ts <> ".json"
+          sanitize_filename(d_tag_data) <> ".json"
 
         _ ->
           String.slice(event.id, 0..8) <> "_" <> ts <> ".json"
