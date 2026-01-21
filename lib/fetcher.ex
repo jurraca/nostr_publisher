@@ -41,8 +41,7 @@ defmodule NostrPublisher.Fetcher do
       output_dir: output_dir,
       schedule_minutes: schedule_minutes,
       reload_module: reload_module,
-      events: [],
-      sub_id: nil
+      events: []
     }
 
     case NostrEx.create_sub(filters) do
@@ -57,20 +56,19 @@ defmodule NostrPublisher.Fetcher do
   end
 
   @impl true
-  def handle_info(:connect_and_subscribe, state) do
+  def handle_info(:connect_and_subscribe, %{subscription: sub} = state) do
     connected_relays = NostrEx.list_relays()
 
     if connected_relays == [] do
       Enum.each(state.relays, fn relay_url -> NostrEx.connect(relay_url) end)
     end
 
-    sub = state.subscription
     NostrEx.listen(sub.id)
 
-    case NostrEx.send_sub(sub, send_via: connected_relays) do
+    case NostrEx.send_sub(sub) do
       {:ok, sub_id} ->
         Logger.info("Subscribed with ID: #{sub_id}")
-        {:noreply, %{state | sub_id: sub_id}}
+        {:noreply, state}
 
       {:error, _reason} ->
         cleanup_relays()
@@ -98,7 +96,7 @@ defmodule NostrPublisher.Fetcher do
 
   @impl true
   def handle_info({:eose, _sub_id, relay_host}, state) do
-    Logger.debug("EOSE received from #{relay_host}")
+    Logger.info("EOSE received from #{relay_host}, disconnecting.")
     NostrEx.disconnect(relay_host)
 
     # Hot-reload blog module if configured and we received events
@@ -135,7 +133,6 @@ defmodule NostrPublisher.Fetcher do
   defp reload_module(module_path) do
     try do
       Code.compile_file(module_path)
-      Logger.info("Module reloaded successfully")
     rescue
       error ->
         Logger.error("Failed to reload module: #{inspect(error)}")
@@ -150,7 +147,7 @@ defmodule NostrPublisher.Fetcher do
           :ok
 
         {:error, reason} ->
-          Logger.debug("Error disconnecting from #{relay_name}: #{inspect(reason)}")
+          Logger.error("Error disconnecting from #{relay_name}: #{inspect(reason)}")
       end
     end)
   end
