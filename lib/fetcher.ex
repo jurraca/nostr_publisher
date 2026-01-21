@@ -99,14 +99,13 @@ defmodule NostrPublisher.Fetcher do
     Logger.info("EOSE received from #{relay_host}, disconnecting.")
     NostrEx.disconnect(relay_host)
 
-    # Hot-reload blog module if configured and we received events
-    if Map.get(state, :reload_module) do
-      reload_module(state.reload_module)
-    end
-
     # If no more connected relays,
+    # hot-reload blog module if configured and we received events
     # schedule another fetch according to schedule
     if NostrEx.list_relays() == [] do
+      if Map.get(state, :reload_module) do
+        reload_module(state.reload_module)
+      end
       Process.send_after(self(), :connect_and_subscribe, state.schedule_minutes * 3600)
     end
 
