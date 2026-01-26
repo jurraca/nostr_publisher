@@ -6,10 +6,11 @@ defmodule NostrPublisher.Parser do
   and content from the event's content field.
   """
 
-  alias Nostr.Tag
+  alias Nostr.Event
 
   @doc """
   Parses a Nostr event JSON file.
+  Uses `Nostr.Event.Article.parse/1` from `nostr_lib`.
 
   ## Parameters
 
@@ -24,78 +25,24 @@ defmodule NostrPublisher.Parser do
 
   ## Tag Mapping
 
-  Nostr tags are mapped to attributes as follows:
-    - `d` tag → `:id` (unique identifier for the article)
-    - `title` tag → `:title`
-    - `published_at` tag → `:date` (converted to Date struct)
-    - `summary` tag → `:description`
-    - `t` tags (can be multiple) → `:tags` (list of topic tags)
-    - Event's `pubkey` → `:author`
-    - Event's `created_at` → `:created_at` (Unix timestamp)
+  See https://hexdocs.pm/nostr_lib/Nostr.Event.Article.html
   """
   def parse(_path, contents) do
     case JSON.decode(contents) do
-      {:ok, event} ->
-        attrs = extract_attrs(event)
-        body = Map.get(event, "content", "")
-        {attrs, body}
+      {:ok, decoded} ->
+        article_struct = decoded 
+          |> Event.parse()
+          |> Event.Article.parse()
+
+        if Map.get(article_struct, :content) do
+          # NimblePublisher expects a tuple {attrs, body}
+          {article_struct, article_struct.content}
+        else
+          {:error, "no content found for event"}
+        end
 
       {:error, reason} ->
         raise "Failed to parse Nostr event JSON: #{inspect(reason)}"
-    end
-  end
-
-  defp extract_attrs(event) do
-    tags =
-      Map.get(event, "tags", [])
-      |> get_all_tags()
-
-    %{
-      id: Map.get(tags, "d") || Map.get(event, "id"),
-      event_id: Map.get(event, "id"),
-      author: Map.get(event, "pubkey"),
-      title: Map.get(tags, "title"),
-      summary: Map.get(tags, "summary"),
-      published_at: parse_date(tags),
-      image: Map.get(tags, "image"),
-      created_at: Map.get(event, "created_at")
-    }
-  end
-
-  defp get_tag_value(tags, tag_name) do
-    Enum.find_value(tags, fn
-      %Tag{type: ^tag_name} = tag -> Map.get(tag, :data)
-      _ -> nil
-    end)
-  end
-
-  defp get_all_tags(tags) do
-    tags
-    |> Enum.filter(fn tag -> Map.get(tag, :type) != nil end)
-    |> Enum.reduce(%{}, fn tag, acc ->
-      {k, v} = parse_tag(tag)
-      Map.put(acc, k, v)
-    end)
-  end
-
-  defp parse_tag(%Tag{type: type, data: data, info: []}), do: {type, data}
-  defp parse_tag(%Tag{type: type, data: data, info: info}), do: {type, {data, info}}
-
-  defp parse_date(tags) do
-    case get_tag_value(tags, "published_at") do
-      nil ->
-        nil
-
-      timestamp_string ->
-        case Integer.parse(timestamp_string) do
-          {timestamp, _} ->
-            timestamp
-            |> DateTime.from_unix!()
-            |> DateTime.to_date()
-
-          :error ->
-            nil
-        end
     end
   end
 end

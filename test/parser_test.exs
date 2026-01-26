@@ -1,79 +1,61 @@
 defmodule NostrPublisher.ParserTest do
   use ExUnit.Case, async: true
-  
+
   alias NostrPublisher.Parser
+  alias Nostr.Event.Article
 
-  test "parses Nostr event JSON and extracts attrs and body" do
-    json = """
-    {
-      "id": "test123",
-      "pubkey": "testpubkey",
-      "created_at": 1675642635,
-      "kind": 30023,
-      "tags": [
-        ["d", "test-article"],
-        ["title", "Test Article"],
-        ["published_at", "1675642000"],
-        ["summary", "A test article"]
-      ],
-      "content": "# Test Content\\n\\nThis is a test.",
-      "sig": "testsig"
-    }
-    """
-
-    {attrs, body} = Parser.parse("test.json", json)
-
-    assert attrs.id == "test-article"
-    assert attrs.title == "Test Article"
-    assert attrs.description == "A test article"
-    assert attrs.author == "testpubkey"
-    assert attrs.created_at == 1675642635
-    assert attrs.date == ~D[2023-02-06]
-    assert body == "# Test Content\n\nThis is a test."
+  setup_all do
+    privkey = :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
+    [privkey: privkey]
   end
 
-  test "extracts multiple topic tags" do
-    json = """
-    {
-      "pubkey": "testpubkey",
-      "created_at": 1675642635,
-      "kind": 30023,
-      "tags": [
-        ["d", "multi-tags"],
-        ["t", "elixir"],
-        ["t", "nostr"],
-        ["t", "tutorial"]
-      ],
-      "content": "Test content"
-    }
-    """
+  test "parses Nostr event JSON and extracts attrs and body", %{privkey: privkey} do
+    content = "# Test Content\\n\\nThis is a test."
 
-    {attrs, _body} = Parser.parse("test.json", json)
+    opts = [
+      title: "Test Article",
+      summary: "so much test",
+      published_at: DateTime.new!(~D[2026-01-01], ~T[00:00:00])
+    ]
 
-    assert attrs.tags == ["elixir", "nostr", "tutorial"]
+    article = Article.create(content, "test-article", opts)
+    json = article.event |> Nostr.Event.sign(privkey) |> JSON.encode!()
+
+    assert {attrs, body} = Parser.parse("test.json", json)
+
+    assert attrs.identifier == "test-article"
+    assert attrs.title == opts[:title]
+    assert attrs.summary == opts[:summary]
+    assert attrs.published_at == opts[:published_at]
+    assert attrs.content == body
+    assert body == content
   end
 
-  test "handles missing optional tags" do
-    json = """
-    {
-      "pubkey": "testpubkey",
-      "created_at": 1675642635,
-      "kind": 30023,
-      "tags": [
-        ["d", "minimal"]
-      ],
-      "content": "Minimal content"
-    }
-    """
+  test "extracts multiple topic tags", %{privkey: privkey} do
+    opts = [
+      title: "Test Article",
+      summary: "so much test",
+      hashtags: ["elixir", "nostr", "tutorial"]
+    ]
 
-    {attrs, body} = Parser.parse("test.json", json)
+    article = Article.create("# Test Content\\n\\nThis is a test.", "test-article", opts)
+    json = article.event |> Nostr.Event.sign(privkey) |> JSON.encode!()
 
-    assert attrs.id == "minimal"
-    assert attrs.author == "testpubkey"
+    assert {attrs, _body} = Parser.parse("test.json", json)
+    assert attrs.hashtags == ["elixir", "nostr", "tutorial"]
+  end
+
+  test "handles missing optional tags", %{privkey: privkey} do
+    article = Article.create("Minimal content", "minimal")
+    json = article.event |> Nostr.Event.sign(privkey) |> JSON.encode!()
+
+    assert {attrs, body} = Parser.parse("test.json", json)
+
+    assert attrs.identifier == "minimal"
     assert body == "Minimal content"
-    refute Map.has_key?(attrs, :title)
-    refute Map.has_key?(attrs, :tags)
-    refute Map.has_key?(attrs, :date)
+    refute Map.get(attrs, :title)
+    refute Map.get(attrs, :tags)
+    refute Map.get(attrs, :date)
   end
 
   test "raises on invalid JSON" do
@@ -82,4 +64,3 @@ defmodule NostrPublisher.ParserTest do
     end
   end
 end
-
