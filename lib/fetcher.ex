@@ -170,14 +170,7 @@ defmodule NostrPublisher.Fetcher do
     filepath = Path.join(output_dir, filename)
 
     if not File.exists?(filepath) do
-      json =
-        event
-        |> Map.from_struct()
-        |> Map.update!(:tags, fn tags ->
-          Enum.map(tags, &Map.from_struct/1)
-        end)
-        |> JSON.encode!()
-
+      json = JSON.encode!(event)
       File.write(filepath, json)
       :ok
     else

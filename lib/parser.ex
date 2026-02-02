@@ -30,13 +30,14 @@ defmodule NostrPublisher.Parser do
   def parse(_path, contents) do
     case JSON.decode(contents) do
       {:ok, decoded} ->
-        article_struct = decoded 
+        article = decoded
           |> Event.parse()
           |> Event.Article.parse()
+          |> Map.from_struct()
 
-        if Map.get(article_struct, :content) do
+        if Map.get(article, :content) do
           # NimblePublisher expects a tuple {attrs, body}
-          {article_struct, article_struct.content}
+          {article, article.content}
         else
           {:error, "no content found for event"}
         end
