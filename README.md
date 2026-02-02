@@ -16,9 +16,11 @@ Publish from anywhere, in markdown, and it will appear on your blog automagicall
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
 by adding `nostr_publisher` to your list of dependencies in `mix.exs`:
 
+You will also need `NimblePublisher`.
 ```elixir
 def deps do
   [
+    {:nimble_publisher, "~> 1.1.1"},
     {:nostr_publisher, "~> 0.1.0"}
   ]
 end
@@ -38,7 +40,7 @@ defmodule MyBlog.Blog do
   """
 
   use NimblePublisher,
-    build: NostrPublisher.Post,
+    build: MyBlog.Post,
     from: Application.app_dir(:myblog, "priv/posts/**/*.json"),
     as: :posts,
     parser: NostrPublisher.Parser,
@@ -77,11 +79,12 @@ In your web application (here called `myblog`), configure `NostrPublisher`.
 You should set `relays` and `filters` to specify the author(s) to fetch and where to fetch them from.
 
 ```elixir
-# config/config.exs
+# config/runtime.exs
 config :myblog, NostrPublisher,
   relays: ["wss://relay.damus.io", "wss://nos.lol"],
-  filters: [authors: ["pubkey"], kinds: [30023]],
+  filters: [authors: ["mylongpubkey"], kinds: [30023]],
   output_dir: "priv/posts",
   reload_module: "lib/my_app/blog.ex"
 ```
 
+However, it is simpler to override the config defaults in `runtime.exs` by setting `AUTHORS` and `RELAYS` environment variables of comma separated values, which get picked up at runtime.
