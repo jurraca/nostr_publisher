@@ -181,7 +181,10 @@ defmodule NostrPublisher.Fetcher do
   defp process_event(_event, _output_dir), do: {:error, :invalid_kind}
 
   defp get_d_tag(tags) when is_list(tags) do
-    Enum.find_value(tags, fn %{type: :d} = tag -> tag end)
+    Enum.find_value(tags, fn tag ->
+      d = Map.get(tag, :d)
+      if(d, do: d)
+    end)
   end
 
   defp get_d_tag(_event), do: nil
